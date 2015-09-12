@@ -1,0 +1,20 @@
+Package: r2plr
+Type: Package
+Title: Streamlined deployment of R algorithms to PL/R
+Version: 1.0
+Date: 2015-09-08
+Author: person("William", "Schneider", email = "william.schneider@emc.com",
+	role = c("aut", "cre"))
+Maintainer: Who to complain to <yourfault@somewhere.net>
+Description: When working with big data housed in a Greenplum database, there are a few 
+	technical details on deploying an algorithm written in R using PL/R to Greenplum. 
+	This package streamlines those logistics for the user. Furthermore, it incorporates 
+	the use of knitr for analytics prototyping. First, it simplifies pulling 
+	a subset piece of data in the manner in which it would be pulled once deployed. Then, 
+	it compiles a R markdown document into a PL/R function and defines the necessary 
+	headers / types.
+License: What license is it under?
+Imports: 
+	RPostgreSQL
+Suggests: knitr
+VignetteBuilder: knitr

@@ -1,0 +1,124 @@
+---
+title: "Deploying R to PL/R"
+author: "William Schneider"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Deploying R to PL/R}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+As part of development on big data platforms, it is often the case that a 
+data scientist needs to deploy a R script, which runs on a locally-developed 
+memory-limited environment, on a database to scale. PL/R provides a way to do that, however, 
+the steps to achieve this can be automated. This package provides a few 
+functions which alleviate the manual editing of PL/R function definitions 
+as well as streamline the development process after the algorithm is 
+executed in-database.
+
+## Development Workflow
+
+Since R can only be executed dynamically on the developer's local machine, 
+the developer can only 'see' into the internal data by pulling data from 
+the database and running the R script. To do this in a way which mimicks the 
+form in which data would be available in the PL/R function, the function 
+`pullDataSet` executes parameterized SQL queries, which internally uses 
+the `RPostgreSQL` library.
+
+As the developer works, he/she must present results to others, prove / disprove 
+hypotheses, perform unit-tests, etc., in addition to developing the 
+algorithm. Using a 
+R markdown file, all these activities can be performed in one document, 
+as opposed to having a local-machine-only version which has statetments not 
+intended for execution on the database.
+
+The next function in the package, `compile`, takes the working document and 
+turns it into a true PL/R function. Additionally, it parses out the 
+working material which isn't intended to be executed on the database. It 
+uses the R markdown syntax to parse, and names for removing content not 
+needed.
+
+## Example
+
+Suppose we have a dataset of a graph with nodes of various classes in a 
+database called `graphs`. We are 
+interested in applying a model to nodes of a given class. We can therefore 
+create a query such as `SELECT * FROM graph WHERE class = v_class` 
+and store it in a .sql file, where the `v_class` is a parameter where we 
+can select a certain class. We would like to use this query in the R 
+environment with a R markdown file.
+
+The first thing we need in the file is the connection to the database:
+
+```{r prepConn, eval= FALSE}
+library(RPostgreSQL)
+
+source('pw-file')
+drv <- dbDriver("PostgreSQL")
+ch <- dbConnect(drv, user= "postgres", password= pw, dbname= "graphs")
+
+```
+
+In case a password is needed, a file is `source`d to bring it in. Note that 
+this block of code is not intended for execution in the database, so, 
+in order to be able to exclude it from compilation into the PL/R function, 
+the block is named with a prefix `prep`, for example, `prepConn`.
+
+Next, we define the variable we want and execute the `pullDataSet` 
+for our query as:
+
+```{r prepLoad, eval= FALSE}
+varClass <- "'m'"
+
+dataSet <- pullDataSet(f= 'queryClass.sql'
+                       , conn= ch
+                       , varList= list(v_class = varClass))
+
+dbDisconnect(ch)
+```
+
+This code block is named `prepLoad`.
+If another type of data for the class of nodes exists, for example, 
+temporal data, we add another call of the `pullDataSet` function for another 
+query saved in a different .sql file.
+
+Once the data is available in R, one may continue with any algorithm code 
+chunks desired (as long as they are *not* named beginning with `prep`). 
+Additionally, one may add code chunks which call 
+visualization queries. These chunks are named with a prefix `vis` to 
+distinguish them from the algorithm code.
+
+Once the algorithm has completed, one must prepare a return data.frame to 
+pass to the SQL environment. Typically, this is done by merging the final 
+score data.frame with any interim data desired.
+
+```{r plrOutput, eval= FALSE}
+returnDf <- merge(scoreDf, interimDf)
+
+```
+
+One may add any other visualization code chunks after this point for 
+unit-tests, sanity checks.
+
+The final step is compiling the R markdown file into PL/R function 
+definition, type, and execution queries. The `compileRToPLR` is used as 
+follows:
+
+```{r compile, eval= FALSE}
+compileRToPLR(script= 'working-document.Rmd'
+              , inputs= list(dat1= data1)
+              , problemKey = 'class'
+              , output= returnDf
+              , name= 'schema.function'
+              , outputFile= 'function.sql')
+```
+
+Note that one must name the data.frames which are inputs to the algorithm. 
+The function will use the datatypes to define the PL/R function. The `class` 
+variable is the one which defines the problem for a given R call, so the 
+function needs to know that in order to define that as a scalar and not a 
+vector. The output argument is the final data.frame expected at the end. 
+By this time, the algorithm is complete and this data.frame should be 
+available. Finally, the name of the PL/R function and the .sql file to write 
+out are specified.
